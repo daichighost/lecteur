@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Lecteur">
+<meta name="theme-color" content="#2e2a25">
 <title>Lecteur</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -152,7 +154,15 @@ body.edit #edit-bar{display:flex;}
 #scrub-cv{display:block;}
 #scrub-pnum{text-align:center;padding:3px 0 4px;font-family:'Playfair Display',serif;font-style:italic;font-size:0.65rem;color:var(--walnut-lt);border-top:1px solid rgba(0,0,0,0.08);}
 
-/* ── LOADING ── */
+/* fullscreen tap hint */
+#fs-hint{
+  display:none;position:absolute;bottom:20px;left:50%;transform:translateX(-50%);
+  background:rgba(0,0,0,0.45);color:rgba(255,255,255,0.7);
+  padding:6px 16px;border-radius:16px;font-size:0.72rem;
+  pointer-events:none;white-space:nowrap;z-index:10;
+  animation:fadeout 2.5s forwards;
+}
+@keyframes fadeout{0%{opacity:1}70%{opacity:1}100%{opacity:0}}
 #loadscreen{display:none;position:fixed;inset:0;background:rgba(22,18,14,0.93);z-index:900;flex-direction:column;align-items:center;justify-content:center;gap:1rem;}
 #loadscreen.on{display:flex;}
 #loadmsg{font-family:'Playfair Display',serif;font-style:italic;font-size:1rem;color:var(--tan);}
@@ -202,6 +212,7 @@ body.edit #edit-bar{display:flex;}
   <div id="page-wrap">
     <div class="page-cv" id="cv-a"><canvas id="canvas-a"></canvas></div>
     <div class="page-cv" id="cv-b"><canvas id="canvas-b"></canvas></div>
+    <div id="fs-hint">タップしてUIを表示</div>
   </div>
   <div id="r-bot">
     <div class="bot-row">
@@ -542,13 +553,27 @@ window.addEventListener('mouseup',async e=>{
 // ── FULLSCREEN (tap page to toggle UI) ──
 let uiHidden=false;
 document.getElementById('r-fs').addEventListener('click',()=>{
+  toggleUI();
+});
+// tap on page when UI hidden → show UI again
+document.getElementById('page-wrap').addEventListener('click',e=>{
+  if(uiHidden)toggleUI();
+});
+function toggleUI(){
   uiHidden=!uiHidden;
   const top=document.getElementById('r-top');
   const bot=document.getElementById('r-bot');
+  const hint=document.getElementById('fs-hint');
   top.style.display=uiHidden?'none':'flex';
   bot.style.display=uiHidden?'none':'flex';
-  document.getElementById('r-fs').textContent=uiHidden?'UI表示':'全画面';
-});
+  if(uiHidden){
+    hint.style.display='block';
+    hint.style.animation='none';
+    void hint.offsetWidth;
+    hint.style.animation='fadeout 2.5s forwards';
+    setTimeout(()=>{hint.style.display='none';},2600);
+  }
+}
 
 // ── INIT ──
 loadLib();renderLib();
