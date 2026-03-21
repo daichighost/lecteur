@@ -323,23 +323,22 @@ document.querySelector('.add-wrap').addEventListener('touchend',function(){
 function readFileIOS(file){
   showLoad('ファイルを読み込み中…',10);
   const reader=new FileReader();
-  reader.onprogress=function(e){
-    if(e.lengthComputable) showLoad('ファイルを読み込み中…',Math.round(e.loaded/e.total*40));
-  };
   reader.onerror=function(){hideLoad();showToast('読み込みに失敗しました');};
   reader.onload=async function(){
     try{
-      // Copy the buffer immediately — iOS Safari detaches it after the event
-      const src=new Uint8Array(reader.result);
-      const buf=src.buffer.slice(0);
+      // Convert base64 dataURL to Uint8Array
+      const dataUrl=reader.result;
+      const base64=dataUrl.split(',')[1];
+      const binary=atob(base64);
+      const copy=new Uint8Array(binary.length);
+      for(let i=0;i<binary.length;i++)copy[i]=binary.charCodeAt(i);
       showLoad('ページ数を確認中…',45);
-      const pdfdoc=await pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise;
+      const pdfdoc=await pdfjsLib.getDocument({data:copy}).promise;
       showLoad('表紙を生成中…',65);
       const cover=await genCover(pdfdoc);
       showLoad('保存中…',85);
       // store as base64 for localStorage
-      const b64=bufToB64(buf);
-      const id='b'+Date.now();
+      const b64=uint8ToB64(copy);      const id='b'+Date.now();
       const name=file.name.replace(/\.pdf$/i,'');
       lib.push({id,name,data:b64,pages:pdfdoc.numPages,cover,ts:Date.now()});
       save();hideLoad();
@@ -352,7 +351,7 @@ function readFileIOS(file){
       console.error(err);
     }
   };
-  reader.readAsArrayBuffer(file);
+  reader.readAsDataURL(file);
 }
 
 async function genCover(pdfdoc){
@@ -365,15 +364,14 @@ async function genCover(pdfdoc){
   }catch{return null;}
 }
 
-function bufToB64(buf){
-  // chunk to avoid stack overflow on large files
-  const bytes=new Uint8Array(buf);
+function uint8ToB64(bytes){
   let s='',chunk=8192;
   for(let i=0;i<bytes.length;i+=chunk){
     s+=String.fromCharCode.apply(null,bytes.subarray(i,i+chunk));
   }
   return btoa(s);
 }
+function bufToB64(buf){return uint8ToB64(new Uint8Array(buf));}
 function b64ToBuf(b64){
   const s=atob(b64),buf=new ArrayBuffer(s.length),v=new Uint8Array(buf);
   for(let i=0;i<s.length;i++)v[i]=s.charCodeAt(i);
