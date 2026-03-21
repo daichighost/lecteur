@@ -337,8 +337,8 @@ function readFileIOS(file){
       showLoad('表紙を生成中…',65);
       const cover=await genCover(pdfdoc);
       showLoad('保存中…',85);
-      // store as base64 for localStorage
-      const b64=uint8ToB64(copy);      const id='b'+Date.now();
+      // Save the base64 directly from dataURL — no re-encoding needed
+      const b64=base64;      const id='b'+Date.now();
       const name=file.name.replace(/\.pdf$/i,'');
       lib.push({id,name,data:b64,pages:pdfdoc.numPages,cover,ts:Date.now()});
       save();hideLoad();
