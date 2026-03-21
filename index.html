@@ -255,7 +255,8 @@ body.edit #edit-bar{display:flex;}
 <div id="toast"></div>
 
 <script>
-pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+// Disable worker for maximum iOS Safari compatibility
+pdfjsLib.GlobalWorkerOptions.workerSrc='';
 
 // ── STATE ──
 let lib=[],pdf=null,spread=0,pages=0,busy=false;
