@@ -455,7 +455,7 @@ async function openBook(id){
     hideLoad();
     await renderSpread(0);
     updateNav();
-  }catch(err){hideLoad();showToast('本を開けませんでした');console.error(err);}
+  }catch(err){hideLoad();const msg=err&&err.message?err.message:'不明';showToast('エラー: '+msg.slice(0,50));console.error(err);}
 }
 
 document.getElementById('r-back').addEventListener('click',function(){
