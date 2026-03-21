@@ -329,9 +329,11 @@ function readFileIOS(file){
   reader.onerror=function(){hideLoad();showToast('読み込みに失敗しました');};
   reader.onload=async function(){
     try{
-      const buf=reader.result; // ArrayBuffer
+      // Copy the buffer immediately — iOS Safari detaches it after the event
+      const src=new Uint8Array(reader.result);
+      const buf=src.buffer.slice(0);
       showLoad('ページ数を確認中…',45);
-      const pdfdoc=await pdfjsLib.getDocument({data:buf}).promise;
+      const pdfdoc=await pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise;
       showLoad('表紙を生成中…',65);
       const cover=await genCover(pdfdoc);
       showLoad('保存中…',85);
