@@ -132,13 +132,15 @@ body.edit #edit-bar{display:flex;}
   box-shadow:0 8px 40px rgba(0,0,0,0.35),0 2px 8px rgba(0,0,0,0.2);
   overflow:hidden;background:var(--paper);
 }
-/* single page mode */
-body.single-page #book{border-radius:4px;}
-body.single-page #slide-cur #spine,
+/* single page mode — full width, single column */
+body.single-page #book{border-radius:4px;width:100% !important;}
+body.single-page #book-wrap{padding:0.5rem;}
+body.single-page .slide-page{flex-direction:column;}
+body.single-page #slide-cur #spine{display:none;}
 body.single-page #slide-cur #rside{display:none;}
-body.single-page #slide-cur #lside{border-right:none;}
-body.single-page #slide-next #spine2,
+body.single-page #slide-cur #lside{border-right:none;flex:1 1 100%;}
 body.single-page #slide-next #rside2{display:none;}
+body.single-page #slide-next #lside2{flex:1 1 100%;}
 .pside{flex:1;position:relative;overflow:hidden;background:var(--paper);}
 #lside{border-right:1px solid #ddd4c0;box-shadow:inset -8px 0 20px rgba(0,0,0,0.08);cursor:pointer;}
 #rside{box-shadow:inset 8px 0 20px rgba(0,0,0,0.05);cursor:pointer;}
@@ -174,7 +176,8 @@ body.single-page #slide-next #rside2{display:none;}
 #pinfo{font-family:'Playfair Display',serif;font-style:italic;font-size:0.82rem;color:rgba(232,222,206,0.45);text-align:center;}
 #pinfo strong{color:var(--tan);font-weight:400;}
 
-/* ── SCRUBBAR ── */
+/* prevent browser pinch zoom inside reader */
+#reader{touch-action:pan-x pan-y;}
 #scrub-wrap{
   width:100%;padding:0 1rem 0.5rem;position:relative;flex-shrink:0;
   background:rgba(50,46,42,0.92);
@@ -530,7 +533,7 @@ async function openBook(id){
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
     await renderSpread(0);
     updateNav();
-  }catch(err){hideLoad();const msg=err&&err.message?err.message:'不明';showToast('エラー: '+msg.slice(0,50));console.error(err);}
+  }catch(err){hideLoad();const msg=err&&err.message?err.message:'不明';showToast('エラー: '+msg.slice(0,50));console.error(err);busy=false;}
 }
 
 document.getElementById('r-back').addEventListener('click',function(){
@@ -708,8 +711,7 @@ function updateInfo(){
   document.getElementById('pinfo').innerHTML='<strong>'+label+'</strong> / '+pages;
 }
 
-// ── SCRUBBAR ──
-let scrubbing=false,previewTimer=null,previewSpread=-1;
+let scrubbing=false,previewSpread=-1,previewThrottle=null;
 
 function updateThumb(){
   const pct=total()<=1?0:spread/(total()-1);
@@ -719,27 +721,29 @@ function updateThumb(){
 async function showPreview(targetSpread,xPx){
   if(!pdf)return;
   const preview=document.getElementById('scrub-preview');
-  const cv=document.getElementById('scrub-canvas');
-  const wrap=document.getElementById('scrub-wrap');
-  // position preview
-  const wrapRect=wrap.getBoundingClientRect();
-  const clampedX=Math.max(60,Math.min(xPx,wrapRect.width-60));
+  const wrapRect=document.getElementById('scrub-wrap').getBoundingClientRect();
+  const clampedX=Math.max(55,Math.min(xPx,wrapRect.width-55));
   preview.style.left=clampedX+'px';
-  if(previewSpread===targetSpread&&preview.classList.contains('show'))return;
-  previewSpread=targetSpread;
   preview.classList.add('show');
-  const[lp]=sp(targetSpread);
-  const pageNum=Math.min(lp,pages);
-  document.getElementById('scrub-pnum').textContent=pageNum+' / '+pages;
-  try{
-    const page=await pdf.getPage(pageNum);
-    const vp=page.getViewport({scale:0.5});
-    cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
-    cv.style.width='100px';cv.style.height=Math.round(vp.height*(100/vp.width))+'px';
-    const c=cv.getContext('2d');
-    c.fillStyle='#faf7f2';c.fillRect(0,0,cv.width,cv.height);
-    await page.render({canvasContext:c,viewport:vp}).promise;
-  }catch(e){}
+  document.getElementById('scrub-pnum').textContent=
+    (singlePage?targetSpread+1:targetSpread*2+1)+' / '+pages;
+  // throttle actual render to avoid freezing
+  if(previewSpread===targetSpread)return;
+  previewSpread=targetSpread;
+  if(previewThrottle)clearTimeout(previewThrottle);
+  previewThrottle=setTimeout(async()=>{
+    try{
+      const[lp]=sp(targetSpread);
+      const page=await pdf.getPage(Math.min(lp,pages));
+      const vp=page.getViewport({scale:0.4});
+      const cv=document.getElementById('scrub-canvas');
+      cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
+      cv.style.width='100px';cv.style.height=Math.round(vp.height*(100/vp.width))+'px';
+      const c=cv.getContext('2d');
+      c.fillStyle='#faf7f2';c.fillRect(0,0,cv.width,cv.height);
+      await page.render({canvasContext:c,viewport:vp}).promise;
+    }catch(e){}
+  },80);
 }
 
 function hidePreview(){
@@ -752,10 +756,9 @@ function scrubToX(x){
   const rect=track.getBoundingClientRect();
   const pct=Math.max(0,Math.min(1,(x-rect.left)/rect.width));
   const targetSpread=Math.round(pct*(total()-1));
-  document.getElementById('scrub-thumb').style.left=(pct*100)+'%';
-  document.getElementById('scrub-thumb').style.transition='none';
-  showPreview(targetSpread,x-rect.left+document.getElementById('scrub-wrap').getBoundingClientRect().left-document.getElementById('scrub-wrap').getBoundingClientRect().left);
-  // re-use xPx relative to wrap
+  const thumb=document.getElementById('scrub-thumb');
+  thumb.style.transition='none';
+  thumb.style.left=(pct*100)+'%';
   const wrapRect=document.getElementById('scrub-wrap').getBoundingClientRect();
   showPreview(targetSpread,x-wrapRect.left);
   return targetSpread;
@@ -766,12 +769,13 @@ scrubTrack.addEventListener('touchstart',e=>{
   e.stopPropagation();
   scrubbing=true;
   scrubToX(e.touches[0].clientX);
-},{passive:true});
+},{passive:false});
 scrubTrack.addEventListener('touchmove',e=>{
   if(!scrubbing)return;
+  e.preventDefault();
   e.stopPropagation();
   scrubToX(e.touches[0].clientX);
-},{passive:true});
+},{passive:false});
 scrubTrack.addEventListener('touchend',async e=>{
   if(!scrubbing)return;
   scrubbing=false;
@@ -779,31 +783,19 @@ scrubTrack.addEventListener('touchend',async e=>{
   hidePreview();
   if(targetSpread!==spread){
     spread=targetSpread;
+    busy=false;
     await renderSpread(spread);
     updateNav();
     updateThumb();
   }
 });
-// mouse support for desktop testing
-scrubTrack.addEventListener('mousedown',e=>{
-  scrubbing=true;
-  scrubToX(e.clientX);
-});
-window.addEventListener('mousemove',e=>{
-  if(!scrubbing)return;
-  scrubToX(e.clientX);
-});
+scrubTrack.addEventListener('mousedown',e=>{scrubbing=true;scrubToX(e.clientX);});
+window.addEventListener('mousemove',e=>{if(!scrubbing)return;scrubToX(e.clientX);});
 window.addEventListener('mouseup',async e=>{
-  if(!scrubbing)return;
-  scrubbing=false;
+  if(!scrubbing)return;scrubbing=false;
   const targetSpread=scrubToX(e.clientX);
   hidePreview();
-  if(targetSpread!==spread){
-    spread=targetSpread;
-    await renderSpread(spread);
-    updateNav();
-    updateThumb();
-  }
+  if(targetSpread!==spread){spread=targetSpread;busy=false;await renderSpread(spread);updateNav();updateThumb();}
 });
 async function openFS(){
   if(!pdf)return;
