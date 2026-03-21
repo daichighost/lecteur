@@ -255,8 +255,7 @@ body.edit #edit-bar{display:flex;}
 <div id="toast"></div>
 
 <script>
-// Disable worker for maximum iOS Safari compatibility
-pdfjsLib.GlobalWorkerOptions.workerSrc='';
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 // ── STATE ──
 let lib=[],pdf=null,spread=0,pages=0,busy=false;
@@ -345,7 +344,9 @@ function readFileIOS(file){
       renderLib();
       showToast('「'+name+'」を追加しました');
     }catch(err){
-      hideLoad();showToast('PDFの読み込みに失敗しました');
+      hideLoad();
+      const msg=err&&err.message?err.message:'不明なエラー';
+      showToast('エラー: '+msg.slice(0,40));
       console.error(err);
     }
   };
