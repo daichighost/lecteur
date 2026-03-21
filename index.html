@@ -453,6 +453,8 @@ async function openBook(id){
     document.getElementById('library-screen').style.display='none';
     document.getElementById('reader').classList.add('on');
     hideLoad();
+    // Wait for layout to complete before rendering pages
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
     await renderSpread(0);
     updateNav();
   }catch(err){hideLoad();const msg=err&&err.message?err.message:'不明';showToast('エラー: '+msg.slice(0,50));console.error(err);}
@@ -471,7 +473,8 @@ function total(){return Math.ceil(pages/2);}
 async function renderSpread(s){
   const[lp,rp]=sp(s);
   const bk=document.getElementById('book');
-  const W=bk.clientWidth/2,H=bk.clientHeight;
+  const W=Math.max(bk.clientWidth/2, window.innerWidth/2-20);
+  const H=Math.max(bk.clientHeight, window.innerHeight-140);
   await Promise.all([
     drawPage(document.getElementById('cleft'),lp,W,H),
     drawPage(document.getElementById('cright'),rp,W,H)
@@ -497,7 +500,8 @@ async function drawPage(cv,pn,W,H){
 async function goNext(){
   if(busy||spread>=total()-1)return;busy=true;
   const ns=spread+1,bk=document.getElementById('book');
-  const W=bk.clientWidth/2,H=bk.clientHeight;
+  const W=Math.max(bk.clientWidth/2,window.innerWidth/2-20);
+  const H=Math.max(bk.clientHeight,window.innerHeight-140);
   const[,rc]=sp(spread),[ln]=sp(ns);
   await drawPage(document.getElementById('cff'),rc,W,H);
   await drawPage(document.getElementById('cfb'),ln,W,H);
@@ -507,7 +511,8 @@ async function goNext(){
 async function goPrev(){
   if(busy||spread<=0)return;busy=true;
   const ps=spread-1,bk=document.getElementById('book');
-  const W=bk.clientWidth/2,H=bk.clientHeight;
+  const W=Math.max(bk.clientWidth/2,window.innerWidth/2-20);
+  const H=Math.max(bk.clientHeight,window.innerHeight-140);
   const[lc]=sp(spread),[,rp]=sp(ps);
   await drawPage(document.getElementById('cfb'),lc,W,H);
   await drawPage(document.getElementById('cff'),rp,W,H);
