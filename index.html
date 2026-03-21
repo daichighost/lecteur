@@ -485,13 +485,20 @@ async function renderSpread(s){
 }
 
 async function drawPage(cv,pn,W,H){
+  const dpr=window.devicePixelRatio||2;
   const ctx=cv.getContext('2d');
-  if(pn>pages){cv.width=Math.round(W);cv.height=Math.round(H);ctx.fillStyle='#faf7f2';ctx.fillRect(0,0,cv.width,cv.height);return;}
+  if(pn>pages){
+    cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);
+    cv.style.width=Math.round(W)+'px';cv.style.height=Math.round(H)+'px';
+    ctx.fillStyle='#faf7f2';ctx.fillRect(0,0,cv.width,cv.height);return;
+  }
   const page=await pdf.getPage(pn);
   const pv=page.getViewport({scale:1});
-  const scale=Math.min(W/pv.width,H/pv.height);
+  const scale=Math.min(W/pv.width,H/pv.height)*dpr;
   const vp=page.getViewport({scale});
   cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
+  cv.style.width=Math.round(vp.width/dpr)+'px';
+  cv.style.height=Math.round(vp.height/dpr)+'px';
   ctx.fillStyle='#faf7f2';ctx.fillRect(0,0,cv.width,cv.height);
   await page.render({canvasContext:ctx,viewport:vp}).promise;
 }
@@ -536,12 +543,25 @@ document.getElementById('rside').addEventListener('click',goNext);
 document.getElementById('prev').addEventListener('click',goPrev);
 document.getElementById('next').addEventListener('click',goNext);
 
-// swipe
-let tx=0;
-document.getElementById('book').addEventListener('touchstart',e=>{tx=e.touches[0].clientX;},{passive:true});
+// swipe — ignore pinch zoom and multi-touch
+let tx=0,ty=0,tCount=0;
+document.getElementById('book').addEventListener('touchstart',e=>{
+  tCount=e.touches.length;
+  if(tCount===1){tx=e.touches[0].clientX;ty=e.touches[0].clientY;}
+},{passive:true});
+document.getElementById('book').addEventListener('touchmove',e=>{
+  tCount=e.touches.length;
+},{passive:true});
 document.getElementById('book').addEventListener('touchend',e=>{
+  // ignore if multi-touch (pinch zoom)
+  if(tCount>1){tCount=0;return;}
+  tCount=0;
   const dx=e.changedTouches[0].clientX-tx;
-  if(Math.abs(dx)>50){dx<0?goNext():goPrev();}
+  const dy=e.changedTouches[0].clientY-ty;
+  // only swipe if horizontal movement is dominant and large enough
+  if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.5){
+    dx<0?goNext():goPrev();
+  }
 });
 
 function updateNav(){
@@ -557,11 +577,14 @@ function updateInfo(){
 // ── FULLSCREEN ──
 async function openFS(){
   if(!pdf)return;
+  const dpr=window.devicePixelRatio||2;
   const[lp]=sp(spread);
   const page=await pdf.getPage(Math.min(lp,pages));
-  const vp=page.getViewport({scale:2.5});
+  const vp=page.getViewport({scale:3*dpr});
   const cv=document.getElementById('fscanvas');
   cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
+  cv.style.width=Math.round(vp.width/dpr)+'px';
+  cv.style.height=Math.round(vp.height/dpr)+'px';
   const c=cv.getContext('2d');c.fillStyle='#faf7f2';c.fillRect(0,0,cv.width,cv.height);
   await page.render({canvasContext:c,viewport:vp}).promise;
   document.getElementById('fsview').classList.add('on');
