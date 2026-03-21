@@ -521,9 +521,14 @@ async function goPrev(){
 
 function animate(dir,cb){
   const fl=document.getElementById('flip');
+  fl.style.display='block';
   fl.className='';void fl.offsetWidth;
   fl.className=dir==='fwd'?'fwd':'bwd';
-  fl.addEventListener('animationend',async()=>{fl.className='';fl.style.display='none';await cb();},{once:true});
+  fl.addEventListener('animationend',async()=>{
+    fl.className='';
+    fl.style.display='none';
+    await cb();
+  },{once:true});
 }
 
 document.getElementById('lside').addEventListener('click',goPrev);
