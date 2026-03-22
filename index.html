@@ -16,7 +16,7 @@
   --bg-deep:   #4e6859;
   --bg-deeper: #3a5044;
   --bg-light:  #8aa598;
-  --bg-pale:   #f0f4f2;
+  --bg-pale:   #f0ede8;
   --text:      #1c2e24;
   --text-mid:  #3a5244;
   --text-muted:#587060;
@@ -109,8 +109,8 @@ body.edit #edit-bar{display:flex;}
 #reader.on{display:flex;}
 
 #r-top{
-  width:100%;background:var(--bg-deeper);
-  border-bottom:1px solid rgba(255,255,255,0.08);
+  width:100%;background:var(--bg);
+  border-bottom:1px solid rgba(255,255,255,0.1);
   height:50px;padding:0 1rem;
   display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
 }
@@ -126,9 +126,25 @@ body.edit #edit-bar{display:flex;}
   max-width:52%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 
+/* ── READER ── */
+#reader{
+  display:none;position:fixed;inset:0;
+  background:var(--bg);
+  flex-direction:column;align-items:center;z-index:200;
+}
+#reader.on{display:flex;}
+
 #page-wrap{
   flex:1;width:100%;position:relative;overflow:hidden;
   display:flex;align-items:center;justify-content:center;
+  touch-action:none;
+}
+#zoom-layer{
+  position:absolute;
+  display:flex;align-items:center;justify-content:center;
+  transform-origin:0 0;
+  will-change:transform;
+  width:100%;height:100%;
 }
 .page-cv{
   position:absolute;inset:0;
@@ -151,7 +167,7 @@ body.edit #edit-bar{display:flex;}
 @keyframes fadeout{0%{opacity:1}70%{opacity:1}100%{opacity:0}}
 
 #r-bot{
-  width:100%;background:var(--bg-deeper);
+  width:100%;background:var(--bg);
   border-top:1px solid rgba(255,255,255,0.07);
   padding:0.55rem 1.2rem 0.5rem;
   display:flex;flex-direction:column;gap:0.45rem;flex-shrink:0;
@@ -248,8 +264,10 @@ body.edit #edit-bar{display:flex;}
     <button id="r-fs" type="button">全画面</button>
   </div>
   <div id="page-wrap">
-    <div class="page-cv" id="cv-a"><canvas id="canvas-a"></canvas></div>
-    <div class="page-cv" id="cv-b"><canvas id="canvas-b"></canvas></div>
+    <div id="zoom-layer">
+      <div class="page-cv" id="cv-a"><canvas id="canvas-a"></canvas></div>
+      <div class="page-cv" id="cv-b"><canvas id="canvas-b"></canvas></div>
+    </div>
     <div id="fs-hint">タップしてUIを表示</div>
   </div>
   <div id="r-bot">
@@ -455,8 +473,8 @@ async function renderPage(pn){
 }
 
 // ── NAVIGATION ──
-async function goNext(){if(rendering||pageNum>=totalPages)return;await renderPage(pageNum+1);updateNav();}
-async function goPrev(){if(rendering||pageNum<=1)return;await renderPage(pageNum-1);updateNav();}
+async function goNext(){if(rendering||pageNum>=totalPages)return;resetZoom();await renderPage(pageNum+1);updateNav();}
+async function goPrev(){if(rendering||pageNum<=1)return;resetZoom();await renderPage(pageNum-1);updateNav();}
 
 document.getElementById('prev').addEventListener('click',goPrev);
 document.getElementById('next').addEventListener('click',goNext);
@@ -470,29 +488,124 @@ function updateInfo(){
   document.getElementById('pinfo').innerHTML='<strong>'+pageNum+'</strong> / '+totalPages;
 }
 
-// ── SWIPE ──
+// ── PINCH ZOOM + SWIPE ──
+let zoomScale=1, zoomX=0, zoomY=0;
+let pStart={},gestureActive=false;
 let tx=0,ty=0,tc=0;
+
 const pw=document.getElementById('page-wrap');
-pw.addEventListener('touchstart',e=>{tc=e.touches.length;if(tc===1){tx=e.touches[0].clientX;ty=e.touches[0].clientY;}},{passive:true});
-pw.addEventListener('touchmove',e=>{if(e.touches.length>1)tc=e.touches.length;},{passive:true});
+const zl=document.getElementById('zoom-layer');
+
+function applyZoom(scale,ox,oy,animated){
+  zl.style.transition=animated?'transform 0.2s ease':'none';
+  zl.style.transform='translate('+ox+'px,'+oy+'px) scale('+scale+')';
+}
+
+function clampPan(scale,ox,oy){
+  const wrap=pw.getBoundingClientRect();
+  const W=wrap.width,H=wrap.height;
+  const maxX=W*(scale-1)/2;
+  const maxY=H*(scale-1)/2;
+  return{
+    x:Math.max(-maxX,Math.min(maxX,ox)),
+    y:Math.max(-maxY,Math.min(maxY,oy))
+  };
+}
+
+function resetZoom(){
+  zoomScale=1;zoomX=0;zoomY=0;
+  applyZoom(1,0,0,true);
+}
+
+pw.addEventListener('touchstart',e=>{
+  tc=e.touches.length;
+  if(tc===1){
+    tx=e.touches[0].clientX;ty=e.touches[0].clientY;
+    gestureActive=false;
+  }else if(tc===2){
+    gestureActive=true;
+    const t0=e.touches[0],t1=e.touches[1];
+    pStart.dist=Math.hypot(t1.clientX-t0.clientX,t1.clientY-t0.clientY);
+    pStart.scale=zoomScale;
+    pStart.midX=(t0.clientX+t1.clientX)/2;
+    pStart.midY=(t0.clientY+t1.clientY)/2;
+    pStart.ox=zoomX;pStart.oy=zoomY;
+  }
+},{passive:false});
+
+pw.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  if(e.touches.length===2){
+    gestureActive=true;tc=2;
+    const t0=e.touches[0],t1=e.touches[1];
+    const dist=Math.hypot(t1.clientX-t0.clientX,t1.clientY-t0.clientY);
+    const newScale=Math.max(1,Math.min(5,pStart.scale*(dist/pStart.dist)));
+    // pan delta from mid point movement
+    const midX=(t0.clientX+t1.clientX)/2;
+    const midY=(t0.clientY+t1.clientY)/2;
+    const panDX=midX-pStart.midX;
+    const panDY=midY-pStart.midY;
+    const clamped=clampPan(newScale,pStart.ox+panDX,pStart.oy+panDY);
+    zoomScale=newScale;zoomX=clamped.x;zoomY=clamped.y;
+    applyZoom(zoomScale,zoomX,zoomY,false);
+  }else if(e.touches.length===1&&!gestureActive&&zoomScale>1){
+    // pan while zoomed with 1 finger
+    const dx=e.touches[0].clientX-tx;
+    const dy=e.touches[0].clientY-ty;
+    const clamped=clampPan(zoomScale,zoomX+dx,zoomY+dy);
+    zoomX=clamped.x;zoomY=clamped.y;
+    tx=e.touches[0].clientX;ty=e.touches[0].clientY;
+    applyZoom(zoomScale,zoomX,zoomY,false);
+  }
+},{passive:false});
+
 pw.addEventListener('touchend',e=>{
-  if(tc>1){tc=0;return;}tc=0;
-  const dx=e.changedTouches[0].clientX-tx;
-  const dy=e.changedTouches[0].clientY-ty;
-  const vv=window.visualViewport;
-  if(vv&&vv.scale>1.05){
-    const atL=vv.offsetLeft<=2;
-    const atR=vv.offsetLeft+vv.width>=vv.scale*window.innerWidth-2;
-    if(Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)*1.5)return;
-    if(dx<0&&atR)goNext();else if(dx>0&&atL)goPrev();
+  if(gestureActive){
+    gestureActive=false;tc=0;
+    // snap back to 1 if nearly at 1
+    if(zoomScale<1.05)resetZoom();
     return;
   }
+  if(tc>1){tc=0;return;}
+  tc=0;
+  const dx=e.changedTouches[0].clientX-tx;
+  const dy=e.changedTouches[0].clientY-ty;
+
+  // tap (no movement) → toggle UI if hidden
+  if(Math.abs(dx)<10&&Math.abs(dy)<10){
+    if(uiHidden)toggleUI();
+    return;
+  }
+
+  // swipe — only when not zoomed or at edge
   if(Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)*1.5)return;
+  if(zoomScale>1.05){
+    const wrap=pw.getBoundingClientRect();
+    const maxX=wrap.width*(zoomScale-1)/2;
+    const atL=zoomX>=-maxX+4;
+    const atR=zoomX<=maxX-4;
+    if(dx<0&&atR)return; // can still pan right
+    if(dx>0&&atL)return; // can still pan left
+  }
   if(dx<0)goNext();else goPrev();
 });
 
-// tap to show UI when fullscreen
-pw.addEventListener('click',()=>{if(uiHidden)toggleUI();});
+// double-tap to zoom in/out
+let lastTap=0;
+pw.addEventListener('touchend',e=>{
+  if(e.changedTouches.length!==1)return;
+  const now=Date.now();
+  const dx=e.changedTouches[0].clientX-tx;
+  const dy=e.changedTouches[0].clientY-ty;
+  if(Math.abs(dx)<15&&Math.abs(dy)<15&&now-lastTap<300){
+    if(zoomScale>1.05){resetZoom();}
+    else{
+      zoomScale=2.5;zoomX=0;zoomY=0;
+      applyZoom(zoomScale,zoomX,zoomY,true);
+    }
+  }
+  lastTap=now;
+},{passive:true});
 
 // ── SCRUBBAR ──
 let scrubbing=false,previewPage=-1,previewThrottle=null;
