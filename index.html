@@ -216,7 +216,76 @@ body.edit #edit-bar{display:flex;}
   color:var(--text-muted);border-top:1px solid rgba(0,0,0,0.06);
 }
 
-/* ── LOADING ── */
+/* ── BOOKMARKS ── */
+#r-bm{
+  background:transparent;border:1px solid rgba(255,255,255,0.18);
+  color:var(--text-pale);height:32px;padding:0 10px;border-radius:2px;
+  font-size:0.85rem;cursor:pointer;
+}
+#bm-overlay{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:300;
+}
+#bm-overlay.on{display:block;}
+#bm-panel{
+  display:none;position:fixed;top:0;right:0;bottom:0;
+  width:min(320px,88vw);
+  background:var(--bg-pale);z-index:301;
+  flex-direction:column;
+  box-shadow:-4px 0 24px rgba(0,0,0,0.25);
+}
+#bm-panel.on{display:flex;}
+#bm-header{
+  background:var(--bg-deeper);padding:0 1rem;height:52px;
+  display:flex;align-items:center;gap:8px;flex-shrink:0;
+  border-bottom:1px solid rgba(255,255,255,0.1);
+}
+#bm-title{
+  font-family:'Josefin Sans',sans-serif;font-weight:200;
+  font-size:0.8rem;letter-spacing:0.2em;text-transform:uppercase;
+  color:var(--text-pale);flex:1;
+}
+#bm-add{
+  background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.22);
+  color:var(--text-pale);padding:0 10px;height:30px;border-radius:2px;
+  font-family:'DM Sans',sans-serif;font-size:0.68rem;letter-spacing:0.08em;
+  text-transform:uppercase;cursor:pointer;white-space:nowrap;
+}
+#bm-close{
+  background:transparent;border:none;color:rgba(255,255,255,0.4);
+  font-size:1rem;cursor:pointer;padding:4px;line-height:1;
+}
+#bm-list{flex:1;overflow-y:auto;padding:0.5rem 0;}
+#bm-empty{
+  display:none;padding:3rem 1.5rem;text-align:center;
+  font-family:'Cormorant',serif;font-style:italic;
+  font-size:0.95rem;color:var(--text-muted);
+}
+.bm-item{
+  display:flex;align-items:center;gap:0.75rem;
+  padding:0.75rem 1rem;cursor:pointer;
+  border-bottom:1px solid rgba(0,0,0,0.06);
+  transition:background 0.15s;
+}
+.bm-item:hover{background:rgba(112,140,124,0.08);}
+.bm-item:active{background:rgba(112,140,124,0.15);}
+.bm-icon{font-size:1rem;flex-shrink:0;opacity:0.6;}
+.bm-info{flex:1;min-width:0;}
+.bm-page{
+  font-family:'Josefin Sans',sans-serif;font-weight:300;
+  font-size:0.78rem;letter-spacing:0.1em;color:var(--text);
+}
+.bm-label{
+  font-family:'Cormorant',serif;font-style:italic;
+  font-size:0.8rem;color:var(--text-muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  margin-top:1px;
+}
+.bm-del{
+  background:transparent;border:none;color:var(--text-muted);
+  font-size:0.9rem;cursor:pointer;padding:4px 6px;opacity:0.5;
+  flex-shrink:0;
+}
+.bm-del:hover{opacity:1;color:#b04040;}
 #loadscreen{display:none;position:fixed;inset:0;background:rgba(58,80,68,0.96);z-index:900;flex-direction:column;align-items:center;justify-content:center;gap:1rem;}
 #loadscreen.on{display:flex;}
 #loadmsg{font-family:'Cormorant',serif;font-style:italic;font-size:1rem;color:var(--text-pale);}
@@ -261,7 +330,10 @@ body.edit #edit-bar{display:flex;}
   <div id="r-top">
     <button id="r-back" type="button">← 本棚</button>
     <div id="r-title">—</div>
-    <button id="r-fs" type="button">全画面</button>
+    <div style="display:flex;gap:6px;">
+      <button id="r-bm" type="button">🔖</button>
+      <button id="r-fs" type="button">全画面</button>
+    </div>
   </div>
   <div id="page-wrap">
     <div id="zoom-layer">
@@ -285,6 +357,18 @@ body.edit #edit-bar{display:flex;}
     </div>
   </div>
 </div>
+
+<!-- BOOKMARK PANEL -->
+<div id="bm-panel">
+  <div id="bm-header">
+    <span id="bm-title">しおり</span>
+    <button id="bm-add" type="button">＋ 現在のページ</button>
+    <button id="bm-close" type="button">✕</button>
+  </div>
+  <div id="bm-list"></div>
+  <div id="bm-empty">しおりはまだありません</div>
+</div>
+<div id="bm-overlay"></div>
 
 <!-- LOADING -->
 <div id="loadscreen">
@@ -419,6 +503,7 @@ async function openBook(id){
     for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
     pdfDoc=await pdfjsLib.getDocument({data:bytes}).promise;
     totalPages=pdfDoc.numPages;pageNum=1;rendering=false;
+    currentBookId=id;
     document.getElementById('r-title').textContent=book.name;
     document.getElementById('library-screen').style.display='none';
     document.getElementById('reader').classList.add('on');
@@ -468,6 +553,7 @@ async function renderPage(pn){
     document.getElementById('cv-b').style.zIndex=frontSlot==='b'?'2':'1';
     pageNum=pn;
     updateInfo();
+    updateBmBtn();
   }catch(e){console.error(e);}
   rendering=false;
 }
@@ -540,12 +626,20 @@ pw.addEventListener('touchmove',e=>{
     const t0=e.touches[0],t1=e.touches[1];
     const dist=Math.hypot(t1.clientX-t0.clientX,t1.clientY-t0.clientY);
     const newScale=Math.max(1,Math.min(5,pStart.scale*(dist/pStart.dist)));
-    // pan delta from mid point movement
     const midX=(t0.clientX+t1.clientX)/2;
     const midY=(t0.clientY+t1.clientY)/2;
+    // pan from mid point movement + zoom anchored to pinch center
+    const scaleRatio=newScale/pStart.scale;
+    const rect=pw.getBoundingClientRect();
+    // vector from wrap center to pinch start mid
+    const originX=pStart.midX-rect.left-rect.width/2;
+    const originY=pStart.midY-rect.top-rect.height/2;
+    // new offset: scale around pinch origin + pan delta
     const panDX=midX-pStart.midX;
     const panDY=midY-pStart.midY;
-    const clamped=clampPan(newScale,pStart.ox+panDX,pStart.oy+panDY);
+    const newX=originX*(1-scaleRatio)+pStart.ox*scaleRatio+panDX;
+    const newY=originY*(1-scaleRatio)+pStart.oy*scaleRatio+panDY;
+    const clamped=clampPan(newScale,newX,newY);
     zoomScale=newScale;zoomX=clamped.x;zoomY=clamped.y;
     applyZoom(zoomScale,zoomX,zoomY,false);
   }else if(e.touches.length===1&&!gestureActive&&zoomScale>1){
@@ -669,7 +763,77 @@ window.addEventListener('mouseup',async e=>{
   if(tp!==pageNum){rendering=false;await renderPage(tp);updateNav();}
 });
 
-// ── FULLSCREEN ──
+// ── BOOKMARKS ──
+let currentBookId=null;
+
+function bmKey(){return 'bm_'+currentBookId;}
+function loadBm(){try{const r=localStorage.getItem(bmKey());return r?JSON.parse(r):[];}catch{return[];}}
+function saveBm(bms){try{localStorage.setItem(bmKey(),JSON.stringify(bms));}catch(e){toast('保存できませんでした');}}
+
+function openBmPanel(){
+  document.getElementById('bm-panel').classList.add('on');
+  document.getElementById('bm-overlay').classList.add('on');
+  renderBmList();
+}
+function closeBmPanel(){
+  document.getElementById('bm-panel').classList.remove('on');
+  document.getElementById('bm-overlay').classList.remove('on');
+}
+
+function renderBmList(){
+  const bms=loadBm();
+  const list=document.getElementById('bm-list');
+  const empty=document.getElementById('bm-empty');
+  list.innerHTML='';
+  if(!bms.length){empty.style.display='block';return;}
+  empty.style.display='none';
+  bms.sort((a,b)=>a.page-b.page).forEach(bm=>{
+    const item=document.createElement('div');item.className='bm-item';
+    item.innerHTML=
+      '<span class="bm-icon">🔖</span>'+
+      '<div class="bm-info">'+
+        '<div class="bm-page">p. '+bm.page+'</div>'+
+        '<div class="bm-label">'+esc(bm.label)+'</div>'+
+      '</div>'+
+      '<button class="bm-del" type="button" data-id="'+bm.id+'">✕</button>';
+    item.querySelector('.bm-del').addEventListener('click',e=>{
+      e.stopPropagation();
+      const id=e.target.dataset.id;
+      const updated=loadBm().filter(b=>b.id!==id);
+      saveBm(updated);renderBmList();
+    });
+    item.addEventListener('click',e=>{
+      if(e.target.classList.contains('bm-del'))return;
+      closeBmPanel();
+      rendering=false;
+      renderPage(bm.page).then(()=>updateNav());
+    });
+    list.appendChild(item);
+  });
+}
+
+function addBookmark(){
+  const bms=loadBm();
+  // avoid duplicate page
+  if(bms.find(b=>b.page===pageNum)){toast('このページはすでに登録済みです');return;}
+  const label=document.getElementById('r-title').textContent||'';
+  bms.push({id:'bm'+Date.now(),page:pageNum,label:label+' — p.'+pageNum});
+  saveBm(bms);renderBmList();
+  toast('p.'+pageNum+' をしおりに追加しました');
+  updateBmBtn();
+}
+
+function updateBmBtn(){
+  const bms=loadBm();
+  const active=bms.find(b=>b.page===pageNum);
+  document.getElementById('r-bm').style.opacity=active?'1':'0.6';
+  document.getElementById('r-bm').title=active?'しおり済み':'しおりに追加';
+}
+
+document.getElementById('r-bm').addEventListener('click',openBmPanel);
+document.getElementById('bm-add').addEventListener('click',addBookmark);
+document.getElementById('bm-close').addEventListener('click',closeBmPanel);
+document.getElementById('bm-overlay').addEventListener('click',closeBmPanel);
 let uiHidden=false;
 document.getElementById('r-fs').addEventListener('click',toggleUI);
 function toggleUI(){
